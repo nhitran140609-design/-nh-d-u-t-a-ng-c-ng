@@ -1,0 +1,10 @@
+{
+  "name": "DrainMap Vũng Tàu - Bản Đồ Thoát Nước & Cảnh Báo Ngập",
+  "description": "Hệ thống số hóa khảo sát cống thoát nước và cảnh báo ngập lụt đô thị thành phố Vũng Tàu (Phường Tam Thắng, Phước Thắng, Bến Đình, P9 cũ, Lưu Chí Hiếu, Bạch Đằng).",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
