@@ -16,9 +16,13 @@ import {
   Link,
   RotateCcw,
   CheckCircle2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Loader2,
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
+import { processImageFile, isHeicFile } from '../utils/imageHelper';
 
 interface PointDetailModalProps {
   point: DrainPoint | null;
@@ -68,6 +72,8 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!point) return null;
@@ -93,26 +99,56 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
     window.open(url, '_blank');
   };
 
-  // Handle local image file upload (file or camera capture)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle local image file upload (supporting HEIC from iPhone, JPG, PNG, WebP)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, WEBP, etc.)');
+    const isHeic = isHeicFile(file);
+    const isValidFormat =
+      isHeic ||
+      file.type.startsWith('image/') ||
+      /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(file.name);
+
+    if (!isValidFormat) {
+      alert('Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, HEIC, WebP, etc.)');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setPreviewImage(dataUrl);
-        setImageUrlInput(dataUrl);
-        setUploadMessage(`Đã tải ảnh: ${file.name}`);
+    try {
+      setIsConverting(true);
+      setConversionStatus(
+        isHeic
+          ? '🍏 Đang xử lý và chuyển đổi ảnh HEIC từ iPhone sang định dạng chuẩn JPG...'
+          : 'Đang tải hình ảnh...'
+      );
+
+      const result = await processImageFile(file, (status) => {
+        setConversionStatus(status);
+      });
+
+      setPreviewImage(result.dataUrl);
+      setImageUrlInput(result.dataUrl);
+
+      if (result.isHeic) {
+        const originalKb = (result.originalSize / 1024).toFixed(0);
+        const newKb = result.newSize ? (result.newSize / 1024).toFixed(0) : '';
+        setUploadMessage(
+          `🍏 Đã chuyển đổi thành công ảnh HEIC (${originalKb}KB) sang JPG (${newKb}KB)`
+        );
+      } else {
+        setUploadMessage(`Đã tải ảnh: ${result.fileName}`);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Lỗi khi tải ảnh:', err);
+      alert(err.message || 'Lỗi khi xử lý hình ảnh');
+      setUploadMessage(null);
+    } finally {
+      setIsConverting(false);
+      setConversionStatus('');
+      // Reset input value so re-selecting same file works
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleApplyNewImage = () => {
@@ -272,31 +308,57 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
                   )}
                 </div>
 
-                {/* Method A: Upload File / Camera */}
-                <div className="flex gap-2 items-center flex-wrap">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button
-                    id="btn-upload-device-photo"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Tải ảnh từ máy / Chụp ảnh</span>
-                  </button>
-
-                  {point.HinhAnh && (
+                {/* Method A: Upload File / Camera / iPhone HEIC */}
+                <div className="space-y-2">
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,.heic,.heif,.HEIC,.HEIF"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
                     <button
-                      onClick={handleRemoveImage}
-                      className="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 rounded-lg hover:bg-rose-950/40 transition-colors"
+                      id="btn-upload-device-photo"
+                      type="button"
+                      disabled={isConverting}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                     >
-                      Xóa ảnh hiện tại
+                      {isConverting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isConverting ? 'Đang chuyển đổi...' : 'Tải ảnh từ máy / Chụp ảnh'}</span>
                     </button>
+
+                    {/* HEIC iPhone format badge */}
+                    <span className="text-[10px] bg-slate-900 border border-slate-700 text-sky-300 px-2 py-1 rounded-md flex items-center gap-1">
+                      <Smartphone className="w-3 h-3 text-sky-400" />
+                      Hỗ trợ ảnh iPhone (HEIC/HEIF), JPG, PNG
+                    </span>
+
+                    {point.HinhAnh && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 rounded-lg hover:bg-rose-950/40 transition-colors ml-auto"
+                      >
+                        Xóa ảnh hiện tại
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Processing / Converting Indicator Banner */}
+                  {isConverting && (
+                    <div className="bg-blue-950/70 border border-blue-500/40 rounded-lg p-2.5 flex items-center gap-2.5 text-xs text-blue-200 animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-white">Đang xử lý ảnh...</div>
+                        <div className="text-[11px] text-blue-300">{conversionStatus || 'Đang giải mã định dạng HEIC sang JPG...'}</div>
+                      </div>
+                    </div>
                   )}
                 </div>
 
