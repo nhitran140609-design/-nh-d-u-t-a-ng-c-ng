@@ -285,7 +285,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           `}
           <div style="margin-top: 8px; display: flex; gap: 6px;">
             <button id="view-detail-btn-${point.id}" style="flex: 1; background: #2563eb; color: white; border: none; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: background 0.2s;">
-              🔎 Chi tiết & Đổi ảnh con đường
+              ✏️ Đổi địa chỉ, tên & ảnh cống
             </button>
           </div>
         </div>

@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { DrainPoint, FilterState, FloodSimulationParams, TinhTrang } from './types';
 import { INITIAL_DRAIN_POINTS } from './data/initialPoints';
 import { exportPointsToCSV, downloadCSVFile } from './utils/csvHelper';
+import {
+  getInitialPointsSync,
+  loadPointsFromStorage,
+  savePointsToStorage,
+  resetStorageToDefaults
+} from './utils/storageHelper';
 import { Header } from './components/Header';
 import { FilterSidebar } from './components/FilterSidebar';
 import { MapViewer } from './components/MapViewer';
@@ -9,33 +15,35 @@ import { PointDetailModal } from './components/PointDetailModal';
 import { SurveyAddModal } from './components/SurveyAddModal';
 import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
 import { FloodSimulatorModal } from './components/FloodSimulatorModal';
-
-const STORAGE_KEY = 'vungtau_drainmap_points_v2';
+import { StorageBackupModal } from './components/StorageBackupModal';
 
 export default function App() {
-  // Load saved points or fall back to INITIAL_DRAIN_POINTS
-  const [points, setPoints] = useState<DrainPoint[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Error reading from localStorage:', e);
-    }
-    return INITIAL_DRAIN_POINTS;
-  });
+  // Fast initial synchronous read from cache
+  const [points, setPoints] = useState<DrainPoint[]>(() => getInitialPointsSync());
+  const [lastSavedTime, setLastSavedTime] = useState<string>('Vừa xong');
 
-  // Save to localStorage when points change
+  // Hydrate from IndexedDB on startup (handles large datasets & high-res/HEIC photos without quota limit)
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(points));
-    } catch (e) {
-      console.warn('Error saving to localStorage:', e);
-    }
+    loadPointsFromStorage()
+      .then((loaded) => {
+        if (Array.isArray(loaded) && loaded.length > 0) {
+          setPoints(loaded);
+        }
+      })
+      .catch((err) => {
+        console.warn('Lỗi đọc cơ sở dữ liệu IndexedDB:', err);
+      });
+  }, []);
+
+  // Save to persistent storage (IndexedDB + LocalStorage) whenever points change
+  useEffect(() => {
+    savePointsToStorage(points)
+      .then((res) => {
+        setLastSavedTime(res.timestamp);
+      })
+      .catch((err) => {
+        console.warn('Lỗi lưu trữ tự động:', err);
+      });
   }, [points]);
 
   // Selected point for detailed inspection
@@ -57,6 +65,7 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isFloodModalOpen, setIsFloodModalOpen] = useState(false);
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
 
   // Location picking on map
   const [isPickingLocation, setIsPickingLocation] = useState(false);
@@ -76,23 +85,28 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+    }, 3800);
   };
 
-  // Handlers
+  // Handlers: every modification triggers automatic persistence
   const handleAddPoint = (newPoint: DrainPoint) => {
-    setPoints((prev) => [newPoint, ...prev]);
+    setPoints((prev) => {
+      const updated = [newPoint, ...prev];
+      // Force immediate persistence for new survey point
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
     setSelectedPoint(newPoint);
     setIsPickingLocation(false);
     setPickedCoords(null);
-    showToast(`Đã thêm điểm khảo sát mới: ${newPoint.TenViTri}`);
+    showToast(`✅ Đã thêm & tự động lưu điểm cống "${newPoint.TenViTri}" vào bộ nhớ máy!`);
   };
 
   const handleUpdateStatus = (id: string, newStatus: TinhTrang) => {
-    setPoints((prev) =>
-      prev.map((p) => {
+    setPoints((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === id) {
-          const updated: DrainPoint = {
+          const item: DrainPoint = {
             ...p,
             TinhTrang: newStatus,
             NgayCapNhat: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -106,51 +120,82 @@ export default function App() {
               newStatus === 'Có rác' ? '60%' : '95%'
           };
           if (selectedPoint?.id === id) {
-            setSelectedPoint(updated);
+            setSelectedPoint(item);
           }
-          return updated;
+          return item;
         }
         return p;
-      })
-    );
-    showToast(`Đã cập nhật tình trạng cống thành "${newStatus}"`);
+      });
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
+    showToast(`✅ Đã lưu cập nhật tình trạng cống thành "${newStatus}"`);
   };
 
   const handleUpdateImage = (id: string, newImageUrl: string) => {
-    setPoints((prev) =>
-      prev.map((p) => {
+    setPoints((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === id) {
-          const updated: DrainPoint = {
+          const item: DrainPoint = {
             ...p,
             HinhAnh: newImageUrl,
             NgayCapNhat: new Date().toISOString().slice(0, 16).replace('T', ' ')
           };
           if (selectedPoint?.id === id) {
-            setSelectedPoint(updated);
+            setSelectedPoint(item);
           }
-          return updated;
+          return item;
         }
         return p;
-      })
-    );
-    showToast('Đã cập nhật hình ảnh con đường / điểm khảo sát thành công');
+      });
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
+    showToast('✅ Đã lưu hình ảnh mới của con đường vào bộ nhớ thiết bị');
+  };
+
+  const handleUpdatePoint = (updatedPoint: DrainPoint) => {
+    setPoints((prev) => {
+      const updated = prev.map((p) => (p.id === updatedPoint.id ? updatedPoint : p));
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
+    setSelectedPoint(updatedPoint);
+    showToast(`✅ Đã lưu cập nhật tên & địa chỉ: "${updatedPoint.TenViTri}"`);
   };
 
   const handleDeletePoint = (id: string) => {
-    setPoints((prev) => prev.filter((p) => p.id !== id));
+    setPoints((prev) => {
+      const updated = prev.filter((p) => p.id !== id);
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
     if (selectedPoint?.id === id) {
       setSelectedPoint(null);
     }
-    showToast('Đã xóa điểm khảo sát');
+    showToast('Đã xóa điểm khảo sát và cập nhật lưu trữ');
   };
 
   const handleImportPoints = (newPoints: DrainPoint[], mode: 'replace' | 'append') => {
-    if (mode === 'replace') {
-      setPoints(newPoints);
-    } else {
-      setPoints((prev) => [...newPoints, ...prev]);
-    }
-    showToast(`Đã đồng bộ ${newPoints.length} điểm khảo sát từ Google Sheets`);
+    setPoints((prev) => {
+      const updated = mode === 'replace' ? newPoints : [...newPoints, ...prev];
+      savePointsToStorage(updated).then((res) => setLastSavedTime(res.timestamp));
+      return updated;
+    });
+    showToast(`✅ Đã đồng bộ & lưu an toàn ${newPoints.length} điểm khảo sát`);
+  };
+
+  const handleRestoreFromBackup = (restoredPoints: DrainPoint[]) => {
+    setPoints(restoredPoints);
+    savePointsToStorage(restoredPoints).then((res) => setLastSavedTime(res.timestamp));
+    showToast(`✅ Đã khôi phục và lưu ${restoredPoints.length} điểm từ file sao lưu!`);
+  };
+
+  const handleResetToDefaults = async () => {
+    const defaults = await resetStorageToDefaults();
+    setPoints(defaults);
+    setLastSavedTime('Vừa xong');
+    showToast('Đã đặt lại dữ liệu mẫu khảo sát ban đầu của TP. Vũng Tàu');
   };
 
   const handleExportCSV = () => {
@@ -179,8 +224,10 @@ export default function App() {
         }}
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
         onOpenFloodModal={() => setIsFloodModalOpen(true)}
+        onOpenStorageModal={() => setIsStorageModalOpen(true)}
         onExportCSV={handleExportCSV}
         floodSimulation={floodSimulation}
+        lastSavedTime={lastSavedTime}
       />
 
       {/* Main Workspace: Left Filter Sidebar + Interactive Map */}
@@ -229,6 +276,7 @@ export default function App() {
         onClose={() => setSelectedPoint(null)}
         onUpdateStatus={handleUpdateStatus}
         onUpdateImage={handleUpdateImage}
+        onUpdatePoint={handleUpdatePoint}
         onDeletePoint={handleDeletePoint}
       />
 
@@ -256,6 +304,15 @@ export default function App() {
         simulation={floodSimulation}
         onUpdateSimulation={setFloodSimulation}
         points={points}
+      />
+
+      <StorageBackupModal
+        isOpen={isStorageModalOpen}
+        onClose={() => setIsStorageModalOpen(false)}
+        points={points}
+        lastSavedTime={lastSavedTime}
+        onRestorePoints={handleRestoreFromBackup}
+        onResetToDefaults={handleResetToDefaults}
       />
     </div>
   );

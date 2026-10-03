@@ -21,12 +21,9 @@ interface FilterSidebarProps {
 
 const KHU_VUC_LIST = [
   'Tất cả',
-  'Chợ Bến Đình',
-  'Chợ P9 cũ',
-  'Đường Lưu Chí Hiếu',
-  'Nhà sách gần Bạch Đằng',
   'Phường Phước Thắng',
-  'Phường Tam Thắng'
+  'Phường Tam Thắng',
+  
 ];
 
 export const FilterSidebar: React.FC<FilterSidebarProps> = ({

@@ -10,7 +10,8 @@ import {
   Calendar,
   AlertCircle,
   Loader2,
-  Smartphone
+  Smartphone,
+  ShieldCheck
 } from 'lucide-react';
 import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
 import { processImageFile, isHeicFile } from '../utils/imageHelper';
@@ -210,6 +211,12 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
               <option value="Nhà sách gần Bạch Đằng">Khu vực Nhà sách gần Bạch Đằng / Bãi Trước</option>
               <option value="Phường Phước Thắng">Phường Phước Thắng (Đường 30/4, Đô Lương)</option>
               <option value="Phường Tam Thắng">Phường Tam Thắng (Thùy Vân, Bãi Sau)</option>
+              <option value="Chợ Rạch Dừa">Phường Phước Thắng (Đường 30/4)</option>
+              <option value="Dọc đường Phạm Hồng Thái">Phường Tam Thắng (Đường Phạm Hồng Thái)</option>
+              <option value="Sân trường THPT Chuyên Lê Qúy Đôn">Phường Phước Thắng (Đường Hàng Điều)</option>
+              <option value="Khu nhà ở Đại An">Phường Tam Thắng (đường Tố Hữu)</option>
+              <option value="Khu nhà ở đường Bùi Kỷ">Phường Phước Thắng (đường Bùi Kỷ, Phước Thắng)</option>
+
             </select>
           </div>
 
@@ -420,20 +427,26 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
           </div>
 
           {/* Submit Action */}
-          <div className="pt-2 border-t border-slate-800 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs font-medium transition-colors"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg text-xs font-bold shadow-lg shadow-blue-600/30 transition-all"
-            >
-              Lưu điểm khảo sát
-            </button>
+          <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 hidden sm:flex">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Tự động lưu an toàn vào bộ nhớ máy</span>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg text-xs font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center gap-1.5"
+              >
+                <span>Lưu & Ghi nhận điểm cống</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

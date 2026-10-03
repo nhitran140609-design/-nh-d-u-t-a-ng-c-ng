@@ -10,7 +10,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Flame
+  Flame,
+  HardDrive
 } from 'lucide-react';
 import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
 
@@ -19,8 +20,10 @@ interface HeaderProps {
   onOpenAddModal: () => void;
   onOpenSyncModal: () => void;
   onOpenFloodModal: () => void;
+  onOpenStorageModal?: () => void;
   onExportCSV: () => void;
   floodSimulation: FloodSimulationParams;
+  lastSavedTime?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,8 +31,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddModal,
   onOpenSyncModal,
   onOpenFloodModal,
+  onOpenStorageModal,
   onExportCSV,
-  floodSimulation
+  floodSimulation,
+  lastSavedTime
 }) => {
   const normalCount = points.filter((p) => p.TinhTrang === 'Bình thường').length;
   const trashCount = points.filter((p) => p.TinhTrang === 'Có rác').length;
@@ -60,10 +65,15 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Realtime KPI Badges */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        <div className="bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-1.5 text-xs text-slate-300">
+        <button
+          onClick={onOpenStorageModal}
+          title="Bấm để xem chi tiết lưu trữ & sao lưu dữ liệu"
+          className="bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-1.5 text-xs text-slate-300 transition-colors cursor-pointer group"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           <span className="font-bold text-white">{points.length}</span>
-          <span className="text-slate-400 text-[11px]">điểm cống</span>
-        </div>
+          <span className="text-slate-400 text-[11px] group-hover:text-slate-200">điểm (Đã lưu 💾)</span>
+        </button>
 
         <div className="bg-emerald-950/60 border border-emerald-800/60 rounded-lg px-2.5 py-1 flex items-center gap-1.5 text-xs text-emerald-300">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -92,6 +102,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Action Buttons */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+        {/* Storage & Backup Details Button */}
+        {onOpenStorageModal && (
+          <button
+            onClick={onOpenStorageModal}
+            title="Quản lý sao lưu & kiểm tra bộ nhớ đã lưu"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          >
+            <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden xl:inline">Bộ nhớ</span>
+          </button>
+        )}
+
         {/* Google Drive Link */}
         <a
           id="google-drive-link-btn"

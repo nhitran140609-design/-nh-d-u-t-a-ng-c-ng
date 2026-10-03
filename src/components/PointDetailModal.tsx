@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { DrainPoint, TinhTrang } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { DrainPoint, TinhTrang, LoaiCong } from '../types';
 import {
   X,
   MapPin,
@@ -19,7 +19,10 @@ import {
   Image as ImageIcon,
   Loader2,
   Sparkles,
-  Smartphone
+  Smartphone,
+  Edit3,
+  Save,
+  Building2
 } from 'lucide-react';
 import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
 import { processImageFile, isHeicFile } from '../utils/imageHelper';
@@ -29,8 +32,19 @@ interface PointDetailModalProps {
   onClose: () => void;
   onUpdateStatus: (id: string, newStatus: TinhTrang) => void;
   onUpdateImage: (id: string, newImageUrl: string) => void;
+  onUpdatePoint?: (updatedPoint: DrainPoint) => void;
   onDeletePoint: (id: string) => void;
 }
+
+const KHU_VUC_OPTIONS = [
+  'Chợ Bến Đình',
+  'Chợ P9 cũ',
+  'Đường Lưu Chí Hiếu',
+  'Nhà sách gần Bạch Đằng',
+  'Phường Phước Thắng',
+  'Phường Tam Thắng',
+  'Khu vực khác'
+];
 
 // Pre-defined sample photos of Vũng Tàu drains/roads for quick selection
 const PRESET_PHOTOS = [
@@ -65,6 +79,7 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
   onClose,
   onUpdateStatus,
   onUpdateImage,
+  onUpdatePoint,
   onDeletePoint
 }) => {
   const [copied, setCopied] = useState(false);
@@ -76,7 +91,63 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
   const [conversionStatus, setConversionStatus] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Address and name editing state
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editTenViTri, setEditTenViTri] = useState(point?.TenViTri || '');
+  const [editKhuVuc, setEditKhuVuc] = useState(point?.KhuVuc || 'Chợ Bến Đình');
+  const [editLoaiCong, setEditLoaiCong] = useState<LoaiCong>(point?.LoaiCong || 'Hàm ếch');
+  const [editViDo, setEditViDo] = useState(point ? String(point.ViDo) : '');
+  const [editKinhDo, setEditKinhDo] = useState(point ? String(point.KinhDo) : '');
+  const [editGhiChu, setEditGhiChu] = useState(point?.GhiChu || '');
+
+  // Synchronize edit fields when point changes
+  useEffect(() => {
+    if (point) {
+      setEditTenViTri(point.TenViTri);
+      setEditKhuVuc(point.KhuVuc || 'Chợ Bến Đình');
+      setEditLoaiCong(point.LoaiCong);
+      setEditViDo(String(point.ViDo));
+      setEditKinhDo(String(point.KinhDo));
+      setEditGhiChu(point.GhiChu || '');
+      setIsEditingDetails(false);
+      setIsEditingImage(false);
+      setPreviewImage(null);
+      setUploadMessage(null);
+    }
+  }, [point?.id]);
+
   if (!point) return null;
+
+  // Handle saving modified name, address, area, notes, coords
+  const handleSaveDetails = () => {
+    if (!editTenViTri.trim()) {
+      alert('Vui lòng nhập tên đường / địa chỉ của cống.');
+      return;
+    }
+
+    const lat = parseFloat(editViDo);
+    const lng = parseFloat(editKinhDo);
+    if (isNaN(lat) || isNaN(lng)) {
+      alert('Tọa độ Vĩ độ và Kinh độ không hợp lệ.');
+      return;
+    }
+
+    const updated: DrainPoint = {
+      ...point,
+      TenViTri: editTenViTri.trim(),
+      KhuVuc: editKhuVuc,
+      LoaiCong: editLoaiCong,
+      ViDo: lat,
+      KinhDo: lng,
+      GhiChu: editGhiChu.trim(),
+      NgayCapNhat: new Date().toISOString().slice(0, 16).replace('T', ' ')
+    };
+
+    if (onUpdatePoint) {
+      onUpdatePoint(updated);
+    }
+    setIsEditingDetails(false);
+  };
 
   // Convert Google Drive share link to direct image display URL
   const formatGoogleDriveUrl = (url: string): string => {
@@ -204,9 +275,20 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
                 </span>
               )}
             </div>
-            <h2 className="text-base font-bold text-white leading-tight">
-              {point.TenViTri}
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-white leading-tight">
+                {point.TenViTri}
+              </h2>
+              <button
+                id="btn-edit-point-address"
+                onClick={() => setIsEditingDetails(!isEditingDetails)}
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Bấm để chỉnh sửa tên đường, địa chỉ hoặc khu vực"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isEditingDetails ? 'Đóng bộ sửa địa chỉ' : '✏️ Đổi địa chỉ, tên'}</span>
+              </button>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -218,6 +300,133 @@ export const PointDetailModal: React.FC<PointDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 overflow-y-auto space-y-4">
+          {/* EDIT ADDRESS & NAME PANEL */}
+          {isEditingDetails && (
+            <div className="bg-slate-950 border border-amber-500/60 rounded-xl p-3.5 space-y-3 shadow-xl animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Edit3 className="w-4 h-4 text-amber-400" />
+                  Chỉnh sửa tên đường & địa chỉ khảo sát:
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">ID: {point.id}</span>
+              </div>
+
+              {/* Input TenViTri */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-200 block mb-1">
+                  Tên Vị Trí / Địa Chỉ / Tuyến Đường <span className="text-rose-400">*</span>:
+                </label>
+                <input
+                  id="input-edit-ten-vi-tri"
+                  type="text"
+                  value={editTenViTri}
+                  onChange={(e) => setEditTenViTri(e.target.value)}
+                  placeholder="VD: Ngã tư Lê Lợi - Trần Hưng Đạo, Chợ Bến Đình..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Select KhuVuc */}
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-200 block mb-1">
+                    Khu vực trọng điểm:
+                  </label>
+                  <select
+                    id="select-edit-khu-vuc"
+                    value={editKhuVuc}
+                    onChange={(e) => setEditKhuVuc(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                  >
+                    {KHU_VUC_OPTIONS.map((kv) => (
+                      <option key={kv} value={kv}>{kv}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* LoaiCong */}
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-200 block mb-1">
+                    Loại cống:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['Hàm ếch', 'Mặt đường'] as const).map((lc) => (
+                      <button
+                        key={lc}
+                        type="button"
+                        onClick={() => setEditLoaiCong(lc)}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all ${
+                          editLoaiCong === lc
+                            ? 'bg-amber-600 border-amber-400 text-white'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {lc === 'Hàm ếch' ? '🕳️ Hàm ếch' : '▦ Mặt đường'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Coordinates */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-0.5">Vĩ độ (ViDo):</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editViDo}
+                    onChange={(e) => setEditViDo(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-0.5">Kinh độ (KinhDo):</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editKinhDo}
+                    onChange={(e) => setEditKinhDo(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* GhiChu */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-200 block mb-1">
+                  Ghi chú hiện trường:
+                </label>
+                <input
+                  type="text"
+                  value={editGhiChu}
+                  onChange={(e) => setEditGhiChu(e.target.value)}
+                  placeholder="Ghi chú về nắp cống, rác thải, bùn đọng..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDetails(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  id="btn-save-address-changes"
+                  type="button"
+                  onClick={handleSaveDetails}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-600/30 flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Lưu thay đổi địa chỉ & tên</span>
+                </button>
+              </div>
+            </div>
+          )}
           {/* Photo Section with Direct Change Image Action */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
