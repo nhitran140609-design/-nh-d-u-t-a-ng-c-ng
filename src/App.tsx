@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DrainPoint, FilterState, FloodSimulationParams, TinhTrang } from './types';
 import { INITIAL_DRAIN_POINTS } from './data/initialPoints';
 import { exportPointsToCSV, downloadCSVFile } from './utils/csvHelper';
@@ -16,27 +16,45 @@ import { SurveyAddModal } from './components/SurveyAddModal';
 import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
 import { FloodSimulatorModal } from './components/FloodSimulatorModal';
 import { StorageBackupModal } from './components/StorageBackupModal';
+import { FieldSurveyGalleryModal } from './components/FieldSurveyGalleryModal';
 
 export default function App() {
   // Fast initial synchronous read from cache
   const [points, setPoints] = useState<DrainPoint[]>(() => getInitialPointsSync());
   const [lastSavedTime, setLastSavedTime] = useState<string>('Vừa xong');
+  const [isGalleryModalOpen, setIsGalleryModalOpen] = useState(false);
+  const isHydratedRef = useRef(false);
 
   // Hydrate from IndexedDB on startup (handles large datasets & high-res/HEIC photos without quota limit)
   useEffect(() => {
+    let isMounted = true;
     loadPointsFromStorage()
       .then((loaded) => {
-        if (Array.isArray(loaded) && loaded.length > 0) {
-          setPoints(loaded);
+        if (isMounted) {
+          if (Array.isArray(loaded) && loaded.length > 0) {
+            setPoints(loaded);
+          }
+          isHydratedRef.current = true;
         }
       })
       .catch((err) => {
         console.warn('Lỗi đọc cơ sở dữ liệu IndexedDB:', err);
+        if (isMounted) {
+          isHydratedRef.current = true;
+        }
       });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Save to persistent storage (IndexedDB + LocalStorage) whenever points change
+  // CRITICAL: Must NOT execute on initial mount before hydration, to preserve stored images & points!
   useEffect(() => {
+    if (!isHydratedRef.current) {
+      return;
+    }
+
     savePointsToStorage(points)
       .then((res) => {
         setLastSavedTime(res.timestamp);
@@ -225,6 +243,7 @@ export default function App() {
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
         onOpenFloodModal={() => setIsFloodModalOpen(true)}
         onOpenStorageModal={() => setIsStorageModalOpen(true)}
+        onOpenGalleryModal={() => setIsGalleryModalOpen(true)}
         onExportCSV={handleExportCSV}
         floodSimulation={floodSimulation}
         lastSavedTime={lastSavedTime}
@@ -278,6 +297,7 @@ export default function App() {
         onUpdateImage={handleUpdateImage}
         onUpdatePoint={handleUpdatePoint}
         onDeletePoint={handleDeletePoint}
+        onOpenGalleryModal={() => setIsGalleryModalOpen(true)}
       />
 
       <SurveyAddModal
@@ -313,6 +333,15 @@ export default function App() {
         lastSavedTime={lastSavedTime}
         onRestorePoints={handleRestoreFromBackup}
         onResetToDefaults={handleResetToDefaults}
+      />
+
+      <FieldSurveyGalleryModal
+        isOpen={isGalleryModalOpen}
+        onClose={() => setIsGalleryModalOpen(false)}
+        points={points}
+        onSelectPoint={(p) => {
+          setSelectedPoint(p);
+        }}
       />
     </div>
   );

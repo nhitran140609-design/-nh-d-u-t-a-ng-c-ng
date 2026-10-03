@@ -13,7 +13,7 @@ import {
   Smartphone,
   ShieldCheck
 } from 'lucide-react';
-import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
+import { GOOGLE_DRIVE_FOLDER_URL, SURVEY_PHOTOS_26 } from '../data/initialPoints';
 import { processImageFile, isHeicFile } from '../utils/imageHelper';
 
 interface SurveyAddModalProps {
@@ -37,6 +37,7 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
   const [loaiCong, setLoaiCong] = useState<LoaiCong>('Hàm ếch');
   const [tinhTrang, setTinhTrang] = useState<TinhTrang>('Có rác');
   const [hinhAnh, setHinhAnh] = useState('');
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [khuVuc, setKhuVuc] = useState('Chợ Bến Đình');
   const [ghiChu, setGhiChu] = useState('');
   const [ngayCapNhat, setNgayCapNhat] = useState(
@@ -79,27 +80,28 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
   };
 
   const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    const isHeic = isHeicFile(file);
     try {
       setIsConvertingImage(true);
-      setConversionStatus(
-        isHeic
-          ? '🍏 Đang giải mã và chuyển đổi ảnh HEIC từ iPhone sang JPG...'
-          : 'Đang tải hình ảnh...'
-      );
+      setConversionStatus(`Đang chuẩn bị xử lý ${files.length} ảnh khảo sát...`);
 
-      const result = await processImageFile(file, (msg) => {
-        setConversionStatus(msg);
-      });
+      const results: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const isHeic = isHeicFile(file);
+        setConversionStatus(
+          `Đang xử lý ảnh ${i + 1}/${files.length}: ${file.name}${isHeic ? ' (chuyển đổi HEIC iPhone)' : ''}...`
+        );
+        const res = await processImageFile(file);
+        results.push(res.dataUrl);
+      }
 
-      setHinhAnh(result.dataUrl);
-      if (result.isHeic) {
-        setImageBadge(`🍏 Đã chuyển ảnh HEIC sang JPG (${(result.originalSize / 1024).toFixed(0)}KB)`);
-      } else {
-        setImageBadge(`Đã tải ảnh: ${result.fileName}`);
+      if (results.length > 0) {
+        setHinhAnh(results[0]);
+        setUploadedPhotos((prev) => Array.from(new Set([...prev, ...results])));
+        setImageBadge(`Đã lưu ${results.length} ảnh khảo sát`);
       }
     } catch (err: any) {
       console.error('Lỗi khi tải ảnh:', err);
@@ -132,6 +134,10 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
     else if (tinhTrang === 'Bị lấp kín') mucDoNguyCo = 'Cao';
     else if (tinhTrang === 'Có rác') mucDoNguyCo = 'Trung bình';
 
+    const finalPhotoList = uploadedPhotos.length > 0
+      ? (hinhAnh ? Array.from(new Set([hinhAnh, ...uploadedPhotos])) : uploadedPhotos)
+      : (hinhAnh ? [hinhAnh] : []);
+
     const newPoint: DrainPoint = {
       id: `SURVEY-${Date.now().toString(36)}`,
       TenViTri: tenViTri.trim(),
@@ -140,6 +146,7 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
       LoaiCong: loaiCong,
       TinhTrang: tinhTrang,
       HinhAnh: hinhAnh.trim() || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&auto=format&fit=crop&q=80',
+      HinhAnhDanhSach: finalPhotoList,
       NgayCapNhat: ngayCapNhat,
       KhuVuc: khuVuc,
       GhiChu: ghiChu.trim() || `Khảo sát thực địa tại ${khuVuc}`,
@@ -351,6 +358,7 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
                   <span>{isConvertingImage ? 'Đang chuyển đổi HEIC...' : 'Tải ảnh từ máy / Chụp ảnh'}</span>
                   <input
                     type="file"
+                    multiple
                     accept="image/*,.heic,.heif,.HEIC,.HEIF"
                     onChange={handleImageFile}
                     disabled={isConvertingImage}
@@ -396,6 +404,39 @@ export const SurveyAddModal: React.FC<SurveyAddModalProps> = ({
                   </button>
                 </div>
               )}
+
+              {/* Quick Pick from 26 Field Survey Photos */}
+              <div className="pt-2 border-t border-slate-800/80">
+                <span className="text-[11px] font-medium text-slate-400 block mb-1">
+                  Hoặc chọn nhanh từ 26 ảnh khảo sát hiện trường Vũng Tàu:
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5">
+                  {SURVEY_PHOTOS_26.map((sp) => {
+                    const isChosen = hinhAnh === sp.url;
+                    return (
+                      <button
+                        key={sp.id}
+                        type="button"
+                        onClick={() => {
+                          setHinhAnh(sp.url);
+                          setImageBadge(`Đã chọn: ${sp.title}`);
+                        }}
+                        className={`relative shrink-0 w-20 h-14 rounded-lg overflow-hidden border transition-all text-left ${
+                          isChosen
+                            ? 'border-sky-400 ring-2 ring-sky-500/60 scale-105'
+                            : 'border-slate-800 opacity-70 hover:opacity-100 hover:border-slate-600'
+                        }`}
+                        title={`${sp.title} (${sp.khuVuc})`}
+                      >
+                        <img src={sp.url} alt={sp.title} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-0 inset-x-0 bg-black/80 text-[8px] text-sky-200 px-1 truncate font-mono">
+                          {sp.id}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 

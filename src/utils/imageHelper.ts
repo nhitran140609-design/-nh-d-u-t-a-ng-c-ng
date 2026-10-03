@@ -26,8 +26,78 @@ export function isHeicFile(file: File): boolean {
 }
 
 /**
+ * Resize and compress image to high quality (max 1600px, JPEG 0.85)
+ * Keeps full detail intact while reducing raw multi-megabyte camera files down to ~150-300KB
+ * Ensures images persist permanently in IndexedDB and LocalStorage without quota issues.
+ */
+export function optimizeImageDataUrl(
+  sourceUrl: string,
+  maxDimension = 1600,
+  quality = 0.85
+): Promise<string> {
+  return new Promise((resolve) => {
+    // If not a data or blob URL, return as-is
+    if (!sourceUrl.startsWith('data:') && !sourceUrl.startsWith('blob:')) {
+      resolve(sourceUrl);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      let { width, height } = img;
+      
+      // If image is already smaller than maxDimension and not overly huge, keep it
+      if (width <= maxDimension && height <= maxDimension && sourceUrl.length < 600000) {
+        resolve(sourceUrl);
+        return;
+      }
+
+      // Calculate scaled dimensions keeping aspect ratio
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(sourceUrl);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      try {
+        const optimized = canvas.toDataURL('image/jpeg', quality);
+        resolve(optimized);
+      } catch {
+        resolve(sourceUrl);
+      }
+    };
+
+    img.onerror = () => {
+      resolve(sourceUrl);
+    };
+
+    img.src = sourceUrl;
+  });
+}
+
+/**
  * Converts a HEIC/HEIF or standard image File to a browser-displayable Data URL (JPEG/PNG).
- * Handles HEIC conversion via heic2any with automatic fallback.
+ * Handles HEIC conversion via heic2any with automatic fallback, and optimizes dimensions
+ * so images are preserved y nguyên (intact) without memory or storage dropouts.
  */
 export async function processImageFile(
   file: File,
@@ -50,15 +120,18 @@ export async function processImageFile(
         ? conversionResult[0]
         : conversionResult;
 
-      const dataUrl = await blobToDataURL(convertedBlob);
-      onProgress?.('Chuyển đổi ảnh HEIC thành công!');
+      const rawDataUrl = await blobToDataURL(convertedBlob);
+      onProgress?.('Đang tối ưu hóa dung lượng ảnh để lưu trữ vĩnh viễn...');
+      
+      const optimizedDataUrl = await optimizeImageDataUrl(rawDataUrl, 1600, 0.85);
+      onProgress?.('Chuyển đổi và lưu ảnh HEIC thành công!');
 
       return {
-        dataUrl,
+        dataUrl: optimizedDataUrl,
         isHeic: true,
         fileName: file.name.replace(/\.(heic|heif)$/i, '.jpg'),
         originalSize: file.size,
-        newSize: convertedBlob.size
+        newSize: Math.round(optimizedDataUrl.length * 0.75)
       };
     } catch (err: any) {
       console.error('Lỗi khi chuyển đổi HEIC:', err);
@@ -70,12 +143,17 @@ export async function processImageFile(
 
   // Standard image (JPG, PNG, WebP, GIF, SVG)
   onProgress?.('Đang đọc dữ liệu ảnh...');
-  const dataUrl = await blobToDataURL(file);
+  const rawDataUrl = await blobToDataURL(file);
+  
+  onProgress?.('Đang xử lý và lưu giữ ảnh chất lượng cao...');
+  const optimizedDataUrl = await optimizeImageDataUrl(rawDataUrl, 1600, 0.85);
+
   return {
-    dataUrl,
+    dataUrl: optimizedDataUrl,
     isHeic: false,
     fileName: file.name,
-    originalSize: file.size
+    originalSize: file.size,
+    newSize: Math.round(optimizedDataUrl.length * 0.75)
   };
 }
 

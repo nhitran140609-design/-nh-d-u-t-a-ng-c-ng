@@ -11,7 +11,8 @@ export interface DrainPoint {
   KinhDo: number; // Tọa độ Kinh độ
   LoaiCong: LoaiCong; // Hàm ếch hoặc Mặt đường
   TinhTrang: TinhTrang; // Bình thường, Có rác, Bị lấp kín, hoặc Tắc nghẽn
-  HinhAnh?: string; // Link ảnh chụp thực tế cống
+  HinhAnh?: string; // Link ảnh chụp thực tế cống chính
+  HinhAnhDanhSach?: string[]; // Danh sách các ảnh chụp khảo sát hiện trường (đa ảnh)
   NgayCapNhat: string; // Thời gian ghi nhận dữ liệu gần nhất
   KhuVuc?: string; // Phường Tam Thắng, Phước Thắng, Chợ Bến Đình, Chợ P9 cũ, Lưu Chí Hiếu, Bạch Đằng...
   GhiChu?: string;
@@ -19,6 +20,17 @@ export interface DrainPoint {
   ChieuSauNuocCm?: number;
   KhaNangThoatNuoc?: string;
   SoNhaTuyenDuong?: string;
+}
+
+export interface SurveyPhotoItem {
+  id: string;
+  pointId: string;
+  title: string;
+  khuVuc: string;
+  url: string;
+  loaiCong: LoaiCong;
+  tinhTrang: TinhTrang;
+  moTa: string;
 }
 
 export interface FilterState {

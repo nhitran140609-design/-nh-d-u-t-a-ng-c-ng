@@ -37,6 +37,15 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
 }) => {
   const [statusKeyword, setStatusKeyword] = React.useState<string>('all');
 
+  // Dynamic area list from existing points so newly added locations are never omitted
+  const dynamicKhuVucList = React.useMemo(() => {
+    const defaultList = ['Tất cả', 'Phường Phước Thắng', 'Phường Tam Thắng'];
+    const pointAreas = points
+      .map((p) => p.KhuVuc?.trim())
+      .filter((kv): kv is string => Boolean(kv) && !defaultList.includes(kv!));
+    return [...defaultList, ...Array.from(new Set(pointAreas))];
+  }, [points]);
+
   const handleApplyFilter = () => {
     if (statusKeyword === 'all') {
       onFilterChange({ ...filters, tinhTrang: 'Tất cả' });
@@ -75,9 +84,35 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
       return false;
     }
 
-    // KhuVuc
-    if (filters.khuVuc !== 'Tất cả' && p.KhuVuc !== filters.khuVuc) {
-      return false;
+    // KhuVuc with smart ward matching
+    if (filters.khuVuc !== 'Tất cả') {
+      const pKv = (p.KhuVuc || '').toLowerCase();
+      const fKv = filters.khuVuc.toLowerCase();
+
+      let matched = pKv === fKv || pKv.includes(fKv);
+
+      // Smart parent ward matching for Vũng Tàu wards & sub-areas
+      if (!matched && fKv.includes('phước thắng')) {
+        matched =
+          pKv.includes('phước thắng') ||
+          pKv.includes('rạch dừa') ||
+          pKv.includes('lê qúy đôn') ||
+          pKv.includes('lê quý đôn') ||
+          pKv.includes('bùi kỷ') ||
+          pKv.includes('đô lương') ||
+          pKv.includes('hàng điều') ||
+          pKv.includes('30/4');
+      } else if (!matched && fKv.includes('tam thắng')) {
+        matched =
+          pKv.includes('tam thắng') ||
+          pKv.includes('phạm hồng thái') ||
+          pKv.includes('đại an') ||
+          pKv.includes('tố hữu') ||
+          pKv.includes('thùy vân') ||
+          pKv.includes('bãi sau');
+      }
+
+      if (!matched) return false;
     }
 
     return true;
@@ -172,7 +207,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
               onChange={(e) => onFilterChange({ ...filters, khuVuc: e.target.value })}
               className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
             >
-              {KHU_VUC_LIST.map((kv) => (
+              {dynamicKhuVucList.map((kv) => (
                 <option key={kv} value={kv}>
                   {kv}
                 </option>

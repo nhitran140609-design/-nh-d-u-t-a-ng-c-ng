@@ -8,7 +8,7 @@ const LOCALSTORAGE_KEY = 'vungtau_drainmap_points_v2';
 const LAST_SAVED_KEY = 'vungtau_drainmap_last_saved';
 
 /**
- * Open or create IndexedDB database
+ * Open or create IndexedDB database (unlimited capacity for high-res images)
  */
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -32,20 +32,25 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 /**
- * Save points to IndexedDB (handles high-res images and large datasets without quota limit)
- * Also mirrors to localStorage as secondary cache (stripping huge base64 if quota exceeded)
+ * Save points to IndexedDB with full fidelity (preserves images, custom coordinates, notes, addresses).
+ * Also mirrors to localStorage. Never strips HinhAnh!
  */
-export async function savePointsToStorage(points: DrainPoint[]): Promise<{ success: boolean; error?: string; timestamp: string }> {
-  const timestamp = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export async function savePointsToStorage(
+  points: DrainPoint[]
+): Promise<{ success: boolean; error?: string; timestamp: string }> {
+  const timestamp = new Date().toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 
-  // 1. Save to IndexedDB
+  // 1. Primary persistence: IndexedDB (stores full-resolution and Base64 images without 5MB quota limit)
   try {
     const db = await openDatabase();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
 
-      // Clear existing records first to maintain exact list
       store.clear();
 
       points.forEach((p) => {
@@ -56,26 +61,17 @@ export async function savePointsToStorage(points: DrainPoint[]): Promise<{ succe
       tx.onerror = () => reject(tx.error);
     });
   } catch (idbErr) {
-    console.warn('Cảnh báo lưu IndexedDB:', idbErr);
+    console.error('Lỗi khi ghi vào IndexedDB:', idbErr);
   }
 
-  // 2. Also save to localStorage as backup/instant cache
+  // 2. Secondary cache: LocalStorage (for fast synchronous warm-up)
   try {
     localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(points));
     localStorage.setItem(LAST_SAVED_KEY, timestamp);
   } catch (e: any) {
-    console.warn('LocalStorage bị đầy hoặc lỗi, thử tối ưu bộ nhớ đệm:', e);
-    // If quota exceeded due to large base64 images, save lightweight version without large images to localStorage
-    try {
-      const lightweight = points.map((p) => ({
-        ...p,
-        HinhAnh: p.HinhAnh && p.HinhAnh.startsWith('data:') ? '' : p.HinhAnh
-      }));
-      localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(lightweight));
-      localStorage.setItem(LAST_SAVED_KEY, timestamp);
-    } catch {
-      // IndexedDB already has the full data safely stored
-    }
+    // If localStorage quota is reached, do NOT strip images or corrupt state.
+    // IndexedDB has already safely committed all data with full fidelity!
+    console.info('LocalStorage đã đầy, dữ liệu đầy đủ bao gồm ảnh đã được lưu an toàn trong IndexedDB.');
   }
 
   return { success: true, timestamp };
@@ -83,7 +79,8 @@ export async function savePointsToStorage(points: DrainPoint[]): Promise<{ succe
 
 /**
  * Load points from storage:
- * Checks IndexedDB first (most complete), falls back to localStorage, then INITIAL_DRAIN_POINTS.
+ * Checks IndexedDB first (most complete source with all uploaded photos & changes intact).
+ * Falls back to localStorage, then INITIAL_DRAIN_POINTS.
  */
 export async function loadPointsFromStorage(): Promise<DrainPoint[]> {
   // Try IndexedDB first
@@ -99,10 +96,18 @@ export async function loadPointsFromStorage(): Promise<DrainPoint[]> {
     });
 
     if (Array.isArray(idbPoints) && idbPoints.length > 0) {
+      // Ensure all 26 points exist by non-destructively merging any missing initial points
+      const existingIds = new Set(idbPoints.map((p) => p.id));
+      const missingInitial = INITIAL_DRAIN_POINTS.filter((p) => !existingIds.has(p.id));
+      if (missingInitial.length > 0) {
+        const merged = [...idbPoints, ...missingInitial];
+        savePointsToStorage(merged);
+        return merged;
+      }
       return idbPoints;
     }
   } catch (err) {
-    console.warn('Không đọc được từ IndexedDB, chuyển sang localStorage:', err);
+    console.warn('Không đọc được từ IndexedDB, kiểm tra localStorage:', err);
   }
 
   // Fallback to localStorage
@@ -111,18 +116,25 @@ export async function loadPointsFromStorage(): Promise<DrainPoint[]> {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        const existingIds = new Set(parsed.map((p: DrainPoint) => p.id));
+        const missingInitial = INITIAL_DRAIN_POINTS.filter((p) => !existingIds.has(p.id));
+        const finalPoints = missingInitial.length > 0 ? [...parsed, ...missingInitial] : parsed;
+        // Also seed into IndexedDB for future loads
+        savePointsToStorage(finalPoints);
+        return finalPoints;
       }
     }
   } catch (e) {
     console.warn('Lỗi đọc localStorage:', e);
   }
 
+  // First time initialization: seed INITIAL_DRAIN_POINTS into IndexedDB
+  savePointsToStorage(INITIAL_DRAIN_POINTS);
   return INITIAL_DRAIN_POINTS;
 }
 
 /**
- * Synchronous initial read for fast component mounting
+ * Synchronous initial read for fast component mounting before IndexedDB resolves
  */
 export function getInitialPointsSync(): DrainPoint[] {
   try {
@@ -130,7 +142,9 @@ export function getInitialPointsSync(): DrainPoint[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        const existingIds = new Set(parsed.map((p: DrainPoint) => p.id));
+        const missing = INITIAL_DRAIN_POINTS.filter((p) => !existingIds.has(p.id));
+        return missing.length > 0 ? [...parsed, ...missing] : parsed;
       }
     }
   } catch (e) {

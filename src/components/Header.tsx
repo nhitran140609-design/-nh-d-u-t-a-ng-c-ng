@@ -11,7 +11,8 @@ import {
   AlertCircle,
   Clock,
   Flame,
-  HardDrive
+  HardDrive,
+  Camera
 } from 'lucide-react';
 import { GOOGLE_DRIVE_FOLDER_URL } from '../data/initialPoints';
 
@@ -21,6 +22,7 @@ interface HeaderProps {
   onOpenSyncModal: () => void;
   onOpenFloodModal: () => void;
   onOpenStorageModal?: () => void;
+  onOpenGalleryModal?: () => void;
   onExportCSV: () => void;
   floodSimulation: FloodSimulationParams;
   lastSavedTime?: string;
@@ -32,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSyncModal,
   onOpenFloodModal,
   onOpenStorageModal,
+  onOpenGalleryModal,
   onExportCSV,
   floodSimulation,
   lastSavedTime
@@ -111,6 +114,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden xl:inline">Bộ nhớ</span>
+          </button>
+        )}
+
+        {/* Field Survey Photos Gallery (26 photos) */}
+        {onOpenGalleryModal && (
+          <button
+            id="field-survey-gallery-btn"
+            onClick={onOpenGalleryModal}
+            title="Xem toàn bộ 26 ảnh khảo sát hiện trường hệ thống cống Vũng Tàu"
+            className="bg-sky-950/90 hover:bg-sky-900 text-sky-200 hover:text-white px-2.5 py-1.5 rounded-lg border border-sky-600/50 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-sm cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5 text-sky-400" />
+            <span>26 Ảnh khảo sát</span>
           </button>
         )}
 
